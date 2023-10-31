@@ -8,7 +8,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from typing import Dict, List, NamedTuple, Optional
-
+import sqlite3
 from mlflow.entities import (
     Dataset,
     DatasetInput,
@@ -98,6 +98,10 @@ from mlflow.utils.validation import (
 
 def _default_root_dir():
     return MLFLOW_TRACKING_DIR.get() or os.path.abspath(DEFAULT_LOCAL_FILE_AND_ARTIFACT_PATH)
+
+
+connection = sqlite3.connect("/home/noatnoathacker/Documents/db.sqlite")
+cursor = connection.cursor()
 
 
 def _read_persisted_experiment_dict(experiment_dict):

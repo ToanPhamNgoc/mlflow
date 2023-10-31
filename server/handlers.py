@@ -14,7 +14,7 @@ import requests
 from flask import Response, current_app, request, send_file
 from google.protobuf import descriptor
 from google.protobuf.json_format import ParseError
-
+import sqlite3
 from mlflow.entities import DatasetInput, ExperimentTag, FileInfo, Metric, Param, RunTag, ViewType
 from mlflow.entities.model_registry import ModelVersionTag, RegisteredModelTag
 from mlflow.environment_variables import (
@@ -101,16 +101,18 @@ from mlflow.utils.uri import is_file_uri, is_local_uri
 from mlflow.utils.validation import _validate_batch_log_api_req
 
 
+connection = sqlite3.connect("/home/noatnoathacker/Documents/db.sqlite")
+cursor = connection.cursor()
+
 _logger = logging.getLogger(__name__)
+_test_tracking = None
 _tracking_store = None
 _model_registry_store = None
 _artifact_repo = None
 STATIC_PREFIX_ENV_VAR = "_MLFLOW_STATIC_PREFIX"
 
-
-
 class TrackingStoreRegistryWrapper(TrackingStoreRegistry):
-    def __init__(self, filestore_path="/home/noatnoathacker/Desktop/tessst/mlruns"  ):
+    def __init__(self ):
         super().__init__()
         self.register("", self._get_file_store)
         self.register("file", self._get_file_store)
@@ -260,28 +262,64 @@ def _get_proxied_run_artifact_destination_path(proxied_artifact_root, relative_p
     )
 
 
-def _get_tracking_store(backend_store_uri="/home/noatnoathacker/Desktop/bbc", default_artifact_root="/home/noatnoathacker/Desktop/bbc"):
+def _get_tracking_store(backend_store_uri=None, default_artifact_root=None):
     from mlflow.server import ARTIFACT_ROOT_ENV_VAR, BACKEND_STORE_URI_ENV_VAR
    
+
+    # Thực hiện truy vấn SQL
+    cursor.execute('SELECT * FROM Users')
+    rows = cursor.fetchall()
+
+    if rows:
+        # In ra tên cột
+        column_names = [description[0] for description in cursor.description]
+
+        # In ra dữ liệu từ bảng và chỉ in ra tên cột userName khi isActive = 1
+        for row in rows:
+            if row[column_names.index("isActive")] == 1:
+                username = row[column_names.index("username")]
+               
+                backend_store_uri = f"/home/noatnoathacker/Desktop/test{username}"
+
     global _tracking_store
-    if _tracking_store is None:
-        store_uri = backend_store_uri or os.environ.get(BACKEND_STORE_URI_ENV_VAR, None)
-        artifact_root = default_artifact_root or os.environ.get(ARTIFACT_ROOT_ENV_VAR, None)
-        _tracking_store = _tracking_store_registry.get_store(store_uri, artifact_root)
+    # if _tracking_store is None:
+    store_uri = backend_store_uri or os.environ.get(BACKEND_STORE_URI_ENV_VAR, None)
+    artifact_root = default_artifact_root or os.environ.get(ARTIFACT_ROOT_ENV_VAR, None)
+    _tracking_store = _tracking_store_registry.get_store(store_uri, artifact_root)
+
     return _tracking_store
+
 
 
 def _get_model_registry_store(registry_store_uri=None):
     from mlflow.server import BACKEND_STORE_URI_ENV_VAR, REGISTRY_STORE_URI_ENV_VAR
 
+    # Thực hiện truy vấn SQL
+    cursor.execute('SELECT * FROM Users')
+    rows = cursor.fetchall()
+
+    if rows:
+        # In ra tên cột
+        column_names = [description[0] for description in cursor.description]
+
+        # In ra dữ liệu từ bảng và chỉ in ra tên cột userName khi isActive = 1
+        for row in rows:
+            if row[column_names.index("isActive")] == 1:
+                username = row[column_names.index("username")]
+               
+                registry_store_uri = f"/home/noatnoathacker/Desktop/test{username}"
+
+
     global _model_registry_store
-    if _model_registry_store is None:
-        store_uri = (
-            registry_store_uri
-            or os.environ.get(REGISTRY_STORE_URI_ENV_VAR, None)
-            or os.environ.get(BACKEND_STORE_URI_ENV_VAR, None)
-        )
-        _model_registry_store = _model_registry_store_registry.get_store(store_uri)
+    
+    # if _model_registry_store is None:
+    store_uri = (
+        registry_store_uri
+        or os.environ.get(REGISTRY_STORE_URI_ENV_VAR, None)
+        or os.environ.get(BACKEND_STORE_URI_ENV_VAR, None)
+    )
+    _model_registry_store = _model_registry_store_registry.get_store(store_uri)
+    
     return _model_registry_store
 
 

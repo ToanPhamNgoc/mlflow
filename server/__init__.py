@@ -11,7 +11,8 @@ from flask import __version__ as flask_version
 from packaging.version import Version
 
 from mlflow.exceptions import MlflowException
-from mlflow.server import handlers
+from flask import redirect, url_for, session
+from functools import wraps
 
 from flask import Flask, render_template, request, url_for, redirect
 from flask_sqlalchemy import SQLAlchemy
@@ -50,6 +51,9 @@ from mlflow.version import VERSION
 # NB: These are internal environment variables used for communication between
 # the cli and the forked gunicorn processes.
 BACKEND_STORE_URI_ENV_VAR = "_MLFLOW_SERVER_FILE_STORE"
+BACKEND_STORE_URI_ENV_VAR = "_MLFLOW_SERVER_FILE_STORE"
+
+
 REGISTRY_STORE_URI_ENV_VAR = "_MLFLOW_SERVER_REGISTRY_STORE"
 ARTIFACT_ROOT_ENV_VAR = "_MLFLOW_SERVER_ARTIFACT_ROOT"
 ARTIFACTS_DESTINATION_ENV_VAR = "_MLFLOW_SERVER_ARTIFACT_DESTINATION"
@@ -64,6 +68,7 @@ REL_STATIC_DIR = "js/build"
 app = Flask(__name__, static_folder=REL_STATIC_DIR)
 IS_FLASK_V1 = Version(flask_version) < Version("2.0")
 
+
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:////home/noatnoathacker/Documents/db.sqlite"
 app.config["SECRET_KEY"] = "abc"
 db = SQLAlchemy()
@@ -71,12 +76,12 @@ db = SQLAlchemy()
 login_manager = LoginManager()
 login_manager.init_app(app)
  
- 
+
 class Users(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(250), unique=True, nullable=False)
     password = db.Column(db.String(250), nullable=False)
- 
+    isActive = db.Column(db.Boolean, default=False, nullable=False)
  
 db.init_app(app)
  
@@ -157,12 +162,24 @@ def serve_static_file(path):
         return send_from_directory(app.static_folder, path, cache_timeout=2419200)
     else:
         return send_from_directory(app.static_folder, path, max_age=2419200)
+    
+
 
 
 # Serve the index.html for the React App for all other routes.
 # @app.route(_add_static_prefix("/"))
 @app.route(_add_static_prefix("/home"))
+# def login_required():
+#     if "home#/experiments/0" in request.url:
+#         # Nếu URL chứa chuỗi cần kiểm tra, hãy từ chối request
+#         print 
+#         return send_from_directory(app.static_folder, "signin.html")
 def serve():
+    has_active_user = Users.query.filter_by(isActive=1).first() is not None
+
+    if not has_active_user:
+            # Nếu không có người dùng nào có isActive là 1, chuyển hướng đến trang đăng nhập
+        return send_from_directory(app.static_folder, "signin.html")
     if os.path.exists(os.path.join(app.static_folder, "home.html")):
         return send_from_directory(app.static_folder, "home.html")
 
@@ -190,22 +207,19 @@ def login():
     from mlflow.store.tracking.file_store import FileStore
     from mlflow.server.handlers import _tracking_store_registry
     from mlflow.tracking._tracking_service.utils import set_tracking_uri
-  
 
+    
     if request.method == "POST":
         user = Users.query.filter_by(
             username=request.form.get("username")).first()
         if user.password == request.form.get("password"):
-
-            # FileStore.change_root_directory("/home/noatnoathacker/Desktop/bbc")
-            # FileStore.__init__(FileStore,"/home/noatnoathacker/Desktop/bbc","/home/noatnoathacker/Desktop/bbc")
-            # _tracking_store_registry._get_file_store(None, "/home/noatnoathacker/Desktop/mlrunsssss","/home/noatnoathacker/Desktop/mlrunsssss") 
-           
-            initialize_backend_stores("/home/noatnoathacker/Desktop/bbc", "/home/noatnoathacker/Desktop/bbc", "/home/noatnoathacker/Desktop/bbc")
-            # _get_model_registry_store("/home/noatnoathacker/Desktop/bbc")
-            # _get_tracking_store("/home/noatnoathacker/Desktop/bbc", "/home/noatnoathacker/Desktop/bbc")
-
-            set_tracking_uri("/home/noatnoathacker/Desktop/bbc")
+            # Đặt giá trị của cột isActive thành 1
+            user.isActive = 1
+    
+            # Lưu thay đổi vào cơ sở dữ liệu
+            db.session.commit()
+            
+            initialize_backend_stores()
             
             return send_from_directory(app.static_folder, "home.html")
         else:
@@ -218,10 +232,6 @@ def login():
     return "Signin page not found"
 
 
-def get_user_mlruns_path(username):
-    mlruns_path = "/mlruns"  # Đường dẫn cố định sau "/home/noatnoathacker/Desktop"
-    user_path = os.path.join(mlruns_path, username)
-    return os.path.join("/home/noatnoathacker/Desktop", user_path)
 
 
 @app.route('/signup', methods=["GET", "POST"])
@@ -249,6 +259,18 @@ def signup():
     # If the HTML file doesn't exist, you can return an error message or redirect to another page
     return "Signup page not found"
 
+@app.route('/logout')
+def logout():
+        # Đặt giá trị của cột isActive thành 1
+    users = Users.query.all()
+
+    # Đặt giá trị isActive thành 0 và lưu vào cơ sở dữ liệu
+    for user in users:
+        user.isActive = 0
+
+    # Commit thay đổi vào cơ sở dữ liệu
+    db.session.commit()
+    return send_from_directory(app.static_folder, "signin.html")
 
 def _find_app(app_name: str) -> str:
     apps = importlib.metadata.entry_points().get("mlflow.app", [])
@@ -258,35 +280,7 @@ def _find_app(app_name: str) -> str:
 
     raise MlflowException(
         f"Failed to find app '{app_name}'. Available apps: {[a.name for a in apps]}"
-    )
-
-
-def authenticate_user(username, password):
-    # Kiểm tra trong database xem có user nào có username và password như vậy không
-    # user = Users.query.filter_by(username=username, password=password).first()
-    # if user is not None:
-    #     # Đã tìm thấy người dùng
-    #     return True
-    # else:
-    #     # Không tìm thấy người dùng
-    #     return True
-
-    return True
-
-
-def set_user_environment(username):
-    # Đặt lại các biến môi trường dựa trên tên người dùng
-    if username:
-        user_folder = f"/home/noatnoathacker/Desktop/tessst{username}"
-        
-        env_map = {}
-        env_map[BACKEND_STORE_URI_ENV_VAR] = user_folder
-        env_map[REGISTRY_STORE_URI_ENV_VAR] = user_folder
-        env_map[ARTIFACT_ROOT_ENV_VAR] = user_folder
-
-   
-
-    
+    )    
 
 
 def _is_factory(app: str) -> bool:
